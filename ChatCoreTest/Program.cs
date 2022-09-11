@@ -19,7 +19,7 @@ namespace ChatCoreTest
       Seek(0);
 
       // write dummy of length
-      // TODO
+      Write(0);
 
       Write(109);
       Write(109.99f);
@@ -65,7 +65,19 @@ namespace ChatCoreTest
     // write an integer into a byte array
     private static bool WriteLength()
     {
-      // TODO
+      // get current position of byte array
+      var pos = Tell();
+
+      // seek to the head
+      Seek(0);
+
+      // write actual length
+      var dataLength = (int)pos - sizeof(int);
+      Write(dataLength);
+
+      // seek to the original position
+      Seek(pos);
+
       return true;
     }
 
@@ -109,21 +121,60 @@ namespace ChatCoreTest
     // read an integer from packet's byte array
     private static bool Read(out int i)
     {
-      // TODO
+      if (BitConverter.IsLittleEndian)
+      {
+        var byteData = new byte[sizeof(int)];
+        Buffer.BlockCopy(m_PacketData, (int)m_Pos, byteData, 0, byteData.Length);
+        Array.Reverse(byteData);
+        i = BitConverter.ToInt32(byteData, 0);
+      }
+      else
+      {
+        i = BitConverter.ToInt32(m_PacketData, (int)m_Pos);
+      }
+
+      m_Pos += sizeof(int);
       return true;
     }
 
     // read an float from packet's byte array
     private static bool Read(out float f)
     {
-      // TODO
+      if (BitConverter.IsLittleEndian)
+      {
+        var byteData = new byte[sizeof(float)];
+        Buffer.BlockCopy(m_PacketData, (int)m_Pos, byteData, 0, byteData.Length);
+        Array.Reverse(byteData);
+        f = BitConverter.ToSingle(byteData, 0);
+      }
+      else
+      {
+        f = BitConverter.ToSingle(m_PacketData, (int)m_Pos);
+      }
+
+      m_Pos += sizeof(float);
       return true;
     }
 
     // read a string from packet's byte array
     private static bool Read(out string str)
     {
-      // TODO
+      // read string length
+      Read(out int length);
+
+      if (BitConverter.IsLittleEndian)
+      {
+        var byteData = new byte[length];
+        Buffer.BlockCopy(m_PacketData, (int)m_Pos, byteData, 0, length);
+        Array.Reverse(byteData);
+        str = Encoding.Unicode.GetString(byteData, 0, length);
+      }
+      else
+      {
+        str = Encoding.Unicode.GetString(m_PacketData, (int)m_Pos, length);
+      }
+
+      m_Pos += (uint)length;
       return true;
     }
 
