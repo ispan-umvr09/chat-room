@@ -12,6 +12,7 @@ namespace ChatClient
 
       Console.WriteLine( "<Please enter your name...>" );
       var name = Console.ReadLine();
+      client.SetName( name );
 
       var succeed = client.Connect("127.0.0.1", 4099);
 
@@ -20,7 +21,6 @@ namespace ChatClient
         return;
       }
 
-      client.SetName( name );
       Console.WriteLine("<You can press any key to start entering text...>");
 
       while (true)
