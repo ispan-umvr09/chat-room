@@ -5,7 +5,9 @@ namespace ChatCore
 {
   public class ChatClient
   {
-    private TcpClient m_client;
+    string m_UserName = "";
+    private Transmitter m_Transmitter = new Transmitter();
+    public event EventHandler<MessageCommand> OnReceiveMessage;
 
     public ChatClient()
     {
@@ -13,76 +15,66 @@ namespace ChatCore
 
     public bool Connect(string address, int port)
     {
-      m_client = new TcpClient();
-
-      try
+      // 使用 Transmitter 連線到 Server 
+      if (!m_Transmitter.Connect(address, port))
       {
-        Console.WriteLine("Connecting to chat server {0}:{1}", address, port);
-        m_client.Connect(address, port);
-
-        Console.WriteLine("Connected to chat server");
-        return m_client.Connected;
-      }
-      catch (ArgumentNullException e)
-      {
-        Console.WriteLine("ArgumentNullException: {0}", e);
+        Console.WriteLine("Connect to server failed");
         return false;
       }
-      catch (SocketException e)
+
+      // 註冊要關注的指令事件
+      m_Transmitter.Register<MessageCommand>(OnMessageCommand);
+
+      // 送出登入指令
+      var loginCommand = new LoginCommand
       {
-        Console.WriteLine("SocketException: {0}", e);
-        return false;
-      }
+        m_Name = m_UserName
+      };
+      m_Transmitter.Send(loginCommand);
+
+      return true;
     }
 
     public void Disconnect()
     {
-      m_client.Close();
+      m_Transmitter.Disconnect();
       Console.WriteLine("Disconnected");
     }
 
     public void Refresh()
     {
-      if (m_client.Available > 0)
-      {
-        HandleReceiveMessages(m_client);
-      }
-    }
-
-    private void HandleReceiveMessages(TcpClient client)
-    {
-      var stream = client.GetStream();
-
-      var numBytes = client.Available;
-      var buffer = new byte[numBytes];
-      var bytesRead = stream.Read(buffer, 0, numBytes);
-      var request = System.Text.Encoding.ASCII.GetString(buffer).Substring(0, bytesRead);
-
-      if (request.StartsWith("MESSAGE:", StringComparison.OrdinalIgnoreCase))
-      {
-        var tokens = request.Split(':');
-        var sender = tokens[1];
-        var message = tokens[2];
-        Console.WriteLine("{0}: {1}", sender, message);
-      }
+      // 給予 Transmitter CPU處理時間來檢查是否有收到網路資料要處理
+      m_Transmitter.Refresh();
     }
 
     public void SetName(string name)
     {
-      var data = "LOGIN:" + name;
-      SendData(data);
+      m_UserName = name;
+    }
+
+    public void Bye()
+    {
+      var command = new ExitCommand();
+      m_Transmitter.Send(command);
+      m_Transmitter.Disconnect();
     }
 
     public void SendMessage(string message)
     {
-      var data = "MESSAGE:" + message;
-      SendData(data);
+      var command = new MessageCommand
+      {
+        m_UserName = m_UserName,
+        m_Message = message
+      };
+
+      m_Transmitter.Send(command);
     }
 
-    private void SendData(string data)
+    public void OnMessageCommand(Transmitter sender, MessageCommand command)
     {
-      var requestBuffer = System.Text.Encoding.ASCII.GetBytes(data);
-      m_client.GetStream().Write(requestBuffer, 0, requestBuffer.Length);
+      Console.WriteLine("{0}: {1}", command.m_UserName, command.m_Message);
+
+      OnReceiveMessage?.Invoke(this, command);
     }
   }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -11,7 +12,8 @@ namespace ChatCore
     private int m_port;
     private TcpListener m_listener;
     private Thread m_handleThread;
-    private readonly Dictionary<string, TcpClient> m_clients = new Dictionary<string, TcpClient>();
+
+    private readonly Dictionary<string, Transmitter> m_transmitters = new Dictionary<string, Transmitter>();
     private readonly Dictionary<string, string> m_userNames = new Dictionary<string, string>();
 
     public ChatServer()
@@ -40,9 +42,16 @@ namespace ChatCore
         var clientId = client.Client.RemoteEndPoint.ToString();
         Console.WriteLine("Client has connected from {0}", clientId);
 
-        lock (m_clients)
+        // 建立 Transmitter，並且註冊要接收的指令
+        var transmitter = new Transmitter(clientId, client);
+        transmitter.Register<LoginCommand>(OnLoginCommand);
+        transmitter.Register<ExitCommand>(OnExitCommand);
+        transmitter.Register<MessageCommand>(OnMessageCommand);
+
+        // 將 transmitter 加入到列表中
+        lock (m_transmitters)
         {
-          m_clients.Add(clientId, client);
+          m_transmitters.Add(clientId, transmitter);
           m_userNames.Add(clientId, "Unknown");
         }
       }
@@ -52,92 +61,106 @@ namespace ChatCore
     {
       while (true)
       {
-        var disconnectedClients = new List<string>();
-
-        lock (m_clients)
+        // 複製 transmitters，減少 Lock(佔用) `m_transmitters` 記憶體的時間
+        Dictionary<string, Transmitter> transmitters;
+        lock (m_transmitters)
         {
-          foreach (var clientId in m_clients.Keys)
-          {
-            var client = m_clients[clientId];
+          transmitters = new Dictionary<string, Transmitter>(m_transmitters);
+        }
 
+        // 對每一個 transmitter 做資料接收的處理
+        foreach (var clientId in transmitters.Keys)
+        {
+          var transmitter = transmitters[clientId];
+          var isDisconnected = false;
+
+          if (transmitter.IsConnected() == false)
+          {
+            isDisconnected = true;
+          }
+          else
+          {
             try
             {
-              if (!client.Connected)
-              {
-                disconnectedClients.Add(clientId);
-              }
-              if (client.Available > 0)
-              {
-                ReceiveMessage(clientId);
-              }
+              // 檢查網路資料，並且分派指令
+              transmitter.Refresh();
             }
             catch (Exception e)
             {
-              Console.WriteLine("Client {0} Receive Error: {1}", clientId, e.Message);
+              Console.WriteLine("Client {0} Refresh Error: {1}", clientId, e.Message);
+              isDisconnected = true;
             }
           }
 
-          foreach (var clientId in disconnectedClients)
+          // 處理斷線
+          if (isDisconnected)
           {
-            RemoveClient(clientId);
+            lock (m_transmitters)
+            {
+              if (m_transmitters.Keys.Contains(clientId))
+              {
+                Console.WriteLine("Client {0} has disconnected...", clientId);
+                m_transmitters.Remove(clientId);
+                m_userNames.Remove(clientId);
+                transmitter.Disconnect();
+              }
+            }
           }
         }
       }
     }
 
-    private void RemoveClient(string clientId)
+    // 處理 登入 指令事件
+    public void OnLoginCommand(Transmitter transmitter, LoginCommand cmd)
     {
-      Console.WriteLine("Client {0} has disconnected...", clientId);
-      var client = m_clients[clientId];
-      m_clients.Remove(clientId);
-      m_userNames.Remove(clientId);
-      client.Close();
+      m_userNames[transmitter.ClientID] = cmd.m_Name;
+      Console.WriteLine("Client {0} Login from {1}",
+        m_userNames[transmitter.ClientID], transmitter.ClientID);
     }
 
-    private void ReceiveMessage(string clientId)
+    public void OnExitCommand(Transmitter transmitter, ExitCommand cmd)
     {
-      var client = m_clients[clientId];
-      var stream = client.GetStream();
+      transmitter.Disconnect();
 
-      var numBytes = client.Available;
-      var buffer = new byte[numBytes];
-      var bytesRead = stream.Read(buffer, 0, numBytes);
-      var request = System.Text.Encoding.ASCII.GetString(buffer).Substring(0, bytesRead);
+      Console.WriteLine("Client {0} leave", m_userNames[transmitter.ClientID]);
 
-      if (request.StartsWith("LOGIN:", StringComparison.OrdinalIgnoreCase))
+      lock (m_transmitters)
       {
-        var tokens = request.Split(':');
-        m_userNames[clientId] = tokens[1];
-        Console.WriteLine("Client {0} Login from {1}", m_userNames[clientId], clientId);
-        return;
-      }
-
-      if (request.StartsWith("MESSAGE:", StringComparison.OrdinalIgnoreCase))
-      {
-        var tokens = request.Split(':');
-        var message = tokens[1];
-        Console.WriteLine("Text: {0} from {1}", message, m_userNames[clientId]);
-        Broadcast(clientId, message);
+        m_transmitters.Remove(transmitter.ClientID);
+        m_userNames.Remove(transmitter.ClientID);
       }
     }
 
-    private void Broadcast(string senderId, string message)
+    // 處理 聊天訊息 指令事件
+    public void OnMessageCommand(Transmitter sender, MessageCommand cmd)
     {
-      var data = $"MESSAGE:{m_userNames[senderId]}:{message}";
-      var buffer = System.Text.Encoding.ASCII.GetBytes(data);
+      Console.WriteLine(cmd.m_UserName + " say: " + cmd.m_Message);
 
-      foreach (var clientId in m_clients.Keys)
+      Broadcast(sender, cmd.m_Message);
+    }
+
+    // 廣播聊天訊息
+    private void Broadcast(Transmitter sender, string message)
+    {
+      var command = new MessageCommand
       {
-        if (clientId != senderId)
+        m_UserName = m_userNames[sender.ClientID],
+        m_Message = message
+      };
+
+      // 複製 transmitters，減少 Lock(佔用) `m_transmitters` 記憶體的時間
+      Dictionary<string, Transmitter> transmitters;
+      lock (m_transmitters)
+      {
+        transmitters = new Dictionary<string, Transmitter>(m_transmitters);
+      }
+
+      // 傳送訊息給其他玩家
+      foreach (var transmitter in transmitters.Values)
+      {
+        if (transmitter != sender)
         {
-          try
-          {
-            m_clients[clientId].GetStream().Write(buffer, 0, buffer.Length);
-          }
-          catch (Exception e)
-          {
-            Console.WriteLine("Client {0} Send Failed: {1}", clientId, e.Message);
-          }
+          transmitter.Send(command);
         }
       }
     }
