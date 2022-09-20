@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Text;
+using ChatCore;
 
 namespace ChatCoreTest
 {
@@ -10,65 +10,36 @@ namespace ChatCoreTest
 
     public static void Main(string[] args)
     {
-      m_PacketData = new byte[1024];
-      m_Pos = 0;
+      var loginCommand = new LoginCommand { m_Name = "Arthur" };
+      var messageCommand = new MessageCommand { m_UserName = "JoJo", m_Message = "Hello!" };
 
-      Write(109);
-      Write(109.99f);
-      Write("Hello!");
+      // 傳送端：將資料序列化
+      var length1 = SerializeCommand(loginCommand, out var buffer1);
+      printBuffer(buffer1, length1);
+      
+      var length2 = SerializeCommand(messageCommand, out var buffer2);
+      printBuffer(buffer2, length2);
+    }
 
-      Console.Write($"Output Byte array(length:{m_Pos}): ");
-      for (var i = 0; i < m_Pos; i++)
+    // 將 Command 序列化，並且抓取 Buffer內容 及 長度
+    private static int SerializeCommand(Command command, out byte[] buffer)
+    {
+      command.Serialize();
+      buffer = command.SealPacketBuffer(out var length);
+
+      return length;
+    }
+    
+    // 顯示 Buffer 內容
+    private static void printBuffer(byte[] buffer, int length)
+    {
+      Console.Write($"Output Byte array(length:{length}): ");
+      for (var i = 0; i < length; i++)
       {
-        Console.Write(m_PacketData[i] + ", ");
-      }
-    }
-
-    // write an integer into a byte array
-    private static bool Write(int i)
-    {
-      // convert int to byte array
-      var bytes = BitConverter.GetBytes(i);
-      _Write(bytes);
-      return true;
-    }
-
-    // write a float into a byte array
-    private static bool Write(float f)
-    {
-      // convert int to byte array
-      var bytes = BitConverter.GetBytes(f);
-      _Write(bytes);
-      return true;
-    }
-
-    // write a string into a byte array
-    private static bool Write(string s)
-    {
-      // convert string to byte array
-      var bytes = Encoding.Unicode.GetBytes(s);
-
-      // write byte array length to packet's byte array
-      if (Write(bytes.Length) == false)
-      {
-        return false;
+        Console.Write(buffer[i] + ", ");
       }
 
-      _Write(bytes);
-      return true;
-    }
-
-    // write a byte array into packet's byte array
-    private static void _Write(byte[] byteData)
-    {
-      // converter little-endian to network's big-endian
-      if (BitConverter.IsLittleEndian)
-      {
-        Array.Reverse(byteData);
-      }
-
-      byteData.CopyTo(m_PacketData, m_Pos);
-      m_Pos += (uint)byteData.Length;
+      Console.WriteLine("");
     }
   }
 }

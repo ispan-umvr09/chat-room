@@ -40,7 +40,9 @@
   <ItemGroup>
     <Compile Include="ChatClient.cs" />
     <Compile Include="ChatServer.cs" />
-    <Compile Include="CMessage.cs" />
+    <Compile Include="Command.cs" />
+    <Compile Include="LoginCommand.cs" />
+    <Compile Include="MessageCommand.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
