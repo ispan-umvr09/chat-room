@@ -51,6 +51,13 @@ namespace ChatCore
       m_UserName = name;
     }
 
+    public void Bye()
+    {
+      var command = new ExitCommand();
+      m_Transmitter.Send(command);
+      m_Transmitter.Disconnect();
+    }
+
     public void SendMessage(string message)
     {
       var command = new MessageCommand

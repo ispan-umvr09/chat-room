@@ -45,6 +45,7 @@ namespace ChatCore
         // 建立 Transmitter，並且註冊要接收的指令
         var transmitter = new Transmitter(clientId, client);
         transmitter.Register<LoginCommand>(OnLoginCommand);
+        transmitter.Register<ExitCommand>(OnExitCommand);
         transmitter.Register<MessageCommand>(OnMessageCommand);
 
         // 將 transmitter 加入到列表中
@@ -115,6 +116,19 @@ namespace ChatCore
       m_userNames[transmitter.ClientID] = cmd.m_Name;
       Console.WriteLine("Client {0} Login from {1}",
         m_userNames[transmitter.ClientID], transmitter.ClientID);
+    }
+
+    public void OnExitCommand(Transmitter transmitter, ExitCommand cmd)
+    {
+      transmitter.Disconnect();
+
+      Console.WriteLine("Client {0} leave", m_userNames[transmitter.ClientID]);
+
+      lock (m_transmitters)
+      {
+        m_transmitters.Remove(transmitter.ClientID);
+        m_userNames.Remove(transmitter.ClientID);
+      }
     }
 
     // 處理 聊天訊息 指令事件

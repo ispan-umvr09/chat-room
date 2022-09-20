@@ -7,6 +7,7 @@ namespace ChatCore
   {
     public enum Type
     {
+      EXIT = 0,
       LOGIN = 1,
       MESSAGE
     }

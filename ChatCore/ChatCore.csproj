@@ -41,6 +41,7 @@
     <Compile Include="ChatClient.cs" />
     <Compile Include="ChatServer.cs" />
     <Compile Include="Command.cs" />
+    <Compile Include="ExitCommand.cs" />
     <Compile Include="LoginCommand.cs" />
     <Compile Include="MessageCommand.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
